@@ -268,3 +268,81 @@ public class HandlerService extends IntentService {
             }
     }
 }
+public class HandlerService extends IntentService {
+    private FreeApp freeApp;
+    private DataArray dataArray;
+    private static final String TAG = "HandlerService";
+    private static final String ACTION_UPDATEUI = "com.webcon.newbreath.UPUI";
+    private DataTransmitter transmitter;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        freeApp = (FreeApp) getApplication();
+        dataArray = new DataArray();
+        transmitter = new DataTransmitter();
+        transmitter.setDataObserver(breathDataObserver);
+
+    }
+
+    public HandlerService() {
+        super("HandlerService");
+    }
+
+    public HandlerService(String name) {
+        super(name);
+    }
+
+    @Override
+    protected void onHandleIntent(Intent intent) {
+        int[] temp = new int[1];
+        temp[0] = intent.getIntExtra("DATA", 0);
+        transmitter.streamIn(temp);
+        if (freeApp.isDebug())
+            Log.i(TAG, "printf num:" + temp[0]);
+    }
+
+    private Observer<int[]> breathDataObserver = new Observer<int[]>() {
+        @Override
+        public void onCompleted() {
+        }
+
+        @Override
+        public void onError(Throwable e) {
+        }
+
+        // all the calls here are on worker thread as specified in DataTransmitter
+        @Override
+        public void onNext(int[] ints) {
+            //update breath real time wave form 实时数据传入
+            dataArray.pushData(ints);
+
+            // call analyser to check if there is any type of alarm 实时数据处理
+            analyse();
+
+        }
+    };
+    private int[] currentBreathSignal;
+    private int[] localMins_refined;
+    private int defalutFlux;
+    private BreathCycleCondition condition;
+    private Intent intent = new Intent();
+
+    private Bundle bundle = new Bundle();
+
+    private void analyse() {
+        // get breath signal 每0.2s 获取一组300个数据
+        currentBreathSignal = dataArray.getBreathArray();
+        defalutFlux = 7000;
+        condition = new BreathCycleCondition(defalutFlux * FreeApp.minAlarmFlux / 100, 12, 10);
+        localMins_refined = ArrayAnalyser.findLocalMins_refined(currentBreathSignal, condition);
+        dataArray.setMyArray(currentBreathSignal);
+        dataArray.setIndicators(localMins_refined);
+        bundle.putParcelable("DATA_ARRAY", dataArray);
+        intent.setAction(ACTION_UPDATEUI);
+        intent.putExtras(bundle);
+        sendBroadcast(intent);
+    }
+
+}
+
